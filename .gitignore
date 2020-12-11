@@ -9,3 +9,4 @@ sys/arch/arm64/stand/efiboot/machine
 *.core
 *.EFI
 *.elf
+tools/
