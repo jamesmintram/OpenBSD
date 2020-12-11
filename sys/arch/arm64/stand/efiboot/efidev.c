@@ -1,4 +1,4 @@
-/*	$OpenBSD: efidev.c,v 1.6 2020/12/09 18:10:18 krw Exp $	*/
+/*	$OpenBSD: efidev.c,v 1.5 2019/07/29 22:33:26 yasuoka Exp $	*/
 
 /*
  * Copyright (c) 2015 YASUOKA Masahiko <yasuoka@yasuoka.net>
@@ -24,7 +24,7 @@
  * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
+* SUCH DAMAGE.
  *
  */
 #include <sys/param.h>
@@ -38,12 +38,19 @@
 #include <efi.h>
 #include "eficall.h"
 
+#define BIOS_DEBUG
+
 extern EFI_BOOT_SERVICES *BS;
 
 extern int debug;
 
 #include "disk.h"
 #include "efidev.h"
+
+// #ifdef DEV_BSIZE
+// #undef DEV_BSIZE
+// #endif
+// #define DEV_BSIZE 262144
 
 #define EFI_BLKSPERSEC(_ed)	((_ed)->blkio->Media->BlockSize / DEV_BSIZE)
 #define EFI_SECTOBLK(_ed, _n)	((_n) * EFI_BLKSPERSEC(_ed))
@@ -61,6 +68,7 @@ void
 efid_init(struct diskinfo *dip, void *handle)
 {
 	EFI_BLOCK_IO		*blkio = handle;
+	const char* result;
 
 	memset(dip, 0, sizeof(struct diskinfo));
 	dip->ed.blkio = blkio;
@@ -68,8 +76,10 @@ efid_init(struct diskinfo *dip, void *handle)
 	dip->diskio = efid_diskio;
 	dip->strategy = efistrategy;
 
-	if (efi_getdisklabel(&dip->ed, &dip->disklabel) == NULL)
+	if ((result = efi_getdisklabel(&dip->ed, &dip->disklabel)) == NULL)
 		dip->flags |= DISKINFO_FLAG_GOODLABEL;
+	else 
+		printf("efi_getdisklabel: %s\n", result);
 }
 
 static EFI_STATUS
@@ -79,11 +89,16 @@ efid_io(int rw, efi_diskinfo_t ed, u_int off, int nsect, void *buf)
 	EFI_PHYSICAL_ADDRESS addr;
 	caddr_t data;
 
+	printf("efid_io: %lu %lu\n", ed->blkio->Media->BlockSize, DEV_BSIZE);
 	if (ed->blkio->Media->BlockSize != DEV_BSIZE)
+	{
+		printf("efid_io: EFI_UNSUPPORTED %lu %lu\n", ed->blkio->Media->BlockSize, DEV_BSIZE);
 		return (EFI_UNSUPPORTED);
+	}
 
 	status = BS->AllocatePages(AllocateAnyPages, EfiLoaderData,
 	    EFI_SIZE_TO_PAGES(nsect * DEV_BSIZE), &addr);
+	printf("read 1\n");
 	if (EFI_ERROR(status))
 		goto on_eio;
 	data = (caddr_t)(uintptr_t)addr;
@@ -93,26 +108,31 @@ efid_io(int rw, efi_diskinfo_t ed, u_int off, int nsect, void *buf)
 		status = EFI_CALL(ed->blkio->ReadBlocks,
 		    ed->blkio, ed->mediaid, off,
 		    nsect * DEV_BSIZE, data);
+		printf("read 2\n");
 		if (EFI_ERROR(status))
 			goto on_eio;
 		memcpy(buf, data, nsect * DEV_BSIZE);
 		break;
 	case F_WRITE:
+		printf("write 1\n");
 		if (ed->blkio->Media->ReadOnly)
 			goto on_eio;
+		printf("write 2\n");
 		memcpy(data, buf, nsect * DEV_BSIZE);
 		status = EFI_CALL(ed->blkio->WriteBlocks,
 		    ed->blkio, ed->mediaid, off,
 		    nsect * DEV_BSIZE, data);
 		if (EFI_ERROR(status))
 			goto on_eio;
+		printf("write 3\n");
 		break;
 	}
+	printf("Success\n"); 
 	return (EFI_SUCCESS);
 
 on_eio:
 	BS->FreePages(addr, EFI_SIZE_TO_PAGES(nsect * DEV_BSIZE));
-
+	printf("efid_io error: %d \n", status);
 	return (status);
 }
 
@@ -499,7 +519,10 @@ efiopen(struct open_file *f, ...)
 	va_end(ap);
 
 	if (part >= MAXPARTITIONS)
+	{
+		printf("part >= MAXPARTITIONS\n");
 		return (ENXIO);
+	}
 
 	TAILQ_FOREACH(dip, &disklist, list) {
 		if (i == unit)
@@ -508,10 +531,16 @@ efiopen(struct open_file *f, ...)
 	}
 
 	if (dip == NULL)
+	{
+		printf("dip == NULL\n");
 		return (ENXIO);
+	}
 
 	if ((dip->flags & DISKINFO_FLAG_GOODLABEL) == 0)
+	{
+		printf("dip->flags & DISKINFO_FLAG_GOODLABEL\n");
 		return (ENXIO);
+	}
 
 	dip->part = part;
 	bootdev_dip = dip;
@@ -521,7 +550,7 @@ efiopen(struct open_file *f, ...)
 }
 
 int
-efistrategy(void *devdata, int rw, daddr_t blk, size_t size, void *buf,
+efistrategy(void *devdata, int rw, daddr32_t blk, size_t size, void *buf,
     size_t *rsize)
 {
 	struct diskinfo *dip = (struct diskinfo *)devdata;

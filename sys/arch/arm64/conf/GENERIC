@@ -58,6 +58,8 @@ sdhc*		at acpi?
 xhci*		at acpi?
 simplebus*	at fdt?
 
+vmm0		at mainbus?
+
 scsibus*	at scsi?
 sd*		at scsibus?
 st*		at scsibus?
@@ -97,7 +99,6 @@ psci*		at fdt? early 1
 pwmreg*		at fdt? early 1
 syscon*		at fdt? early 1
 pwmfan*		at fdt?
-
 virtio*		at fdt?
 virtio*		at pci?
 vio*		at virtio?

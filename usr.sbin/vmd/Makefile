@@ -19,6 +19,23 @@ DPADD+=		${LIBUTIL} ${LIBPTHREAD} ${LIBEVENT}
 
 YFLAGS=
 
+.elif ${MACHINE} == "arm64"
+
+PROG=		vmd
+SRCS=		vmd_arm64.c log.c  config.c proc.c priv.c control.c
+SRCS+=		parse.y
+
+CFLAGS+=	-Wall -I${.CURDIR}
+CFLAGS+=	-Wstrict-prototypes -Wmissing-prototypes
+CFLAGS+=	-Wmissing-declarations
+CFLAGS+=	-Wshadow -Wpointer-arith -Wcast-qual
+CFLAGS+=	-Wsign-compare
+
+LDADD+=		-lutil -lpthread -levent
+DPADD+=		${LIBUTIL} ${LIBPTHREAD} ${LIBEVENT}
+
+YFLAGS=
+
 .else
 
 NOPROG= yes
