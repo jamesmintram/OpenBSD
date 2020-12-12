@@ -78,6 +78,17 @@ struct vmm_softc {
 int vmm_probe(struct device *, void *, void *);
 void vmm_attach(struct device *, struct device *, void *);
 
+extern uint64_t hypmode_enabled;
+static __inline bool
+virt_enabled()
+{
+	return (hypmode_enabled != 0);
+}
+
+extern char hyp_init_vectors[];
+extern char hyp_vectors[];
+
+uint64_t	vmm_call_hyp(void *hyp_func_addr, ...);
 
 struct cfdriver vmm_cd = {
 	NULL, "vmm", DV_DULL
@@ -99,6 +110,10 @@ int
 vmm_enabled(void)
 {
 	//TODO: Implement this as well
+	if (!virt_enabled())
+	{
+		panic("Virtualization not enabled\n");
+	}
 
 	return 1;
 }
@@ -107,8 +122,30 @@ int
 vmm_probe(struct device *parent, void *match, void *aux)
 {
 	const char **busname = (const char **)aux;
+	
+	paddr_t pa;
 
-	panic("vmm_probe: AT THE DISCO");
+	//TODO: Should move check in vmm_enabled - and make non panic
+	if (!virt_enabled())
+	{
+		panic("Virtualization not enabled\n");
+	}
+
+	//TODO: Temporary living place
+	/*
+	 * Install the temporary vectors which will be responsible for
+	 * initializing the VMM when we next trap into EL2.
+	 *
+	 * x0: the exception vector table responsible for hypervisor
+	 * initialization on the next call.
+	 */
+	pmap_extract(pmap_kernel(), (vaddr_t)hyp_init_vectors, &pa);
+	vmm_call_hyp((void *)pa);
+
+	uint64_t res = 
+	vmm_call_hyp((void *)pa);
+
+	panic("vmm_probe: AT THE DISCO %llu", res);
 
     //TODO: Fix this mofo
 	if (strcmp(*busname, vmm_cd.cd_name) != 0)

@@ -37,6 +37,11 @@
 #define	VIRT_BITS	39
 #define	NUM_L1_TTBR0	2
 
+	.align 3
+	.globl _C_LABEL(hypmode_enabled)
+_C_LABEL(hypmode_enabled):
+	.zero 8	
+
 /*
  * If we are started in EL2, configure the required hypervisor
  * registers and drop to EL1.
@@ -90,7 +95,10 @@ drop_to_el1:
 	mov	x2, 0  /* #VTTBR_HOST */
 	msr	vttbr_el2, x2
 
-	// TODO Set some flag
+	/* Mark hypervisor mode as enabled */
+	mov 	x1, #1
+	adr	x2, hypmode_enabled
+	str 	x1, [x2]
 
 	mov	x2, #(PSR_F | PSR_I | PSR_A | PSR_D | PSR_M_EL1h)
 	msr	spsr_el2, x2
