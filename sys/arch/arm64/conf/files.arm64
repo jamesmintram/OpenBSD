@@ -163,3 +163,6 @@ file	arch/arm64/arm64/acpiapm.c		apm
 device vmm {}
 attach vmm at mainbus
 file    arch/arm64/arm64/vmm.c          vmm     needs-flag
+
+# This is to allow quick iteration/testing during vmm standup
+file    arch/arm64/arm64/vmm_test.c

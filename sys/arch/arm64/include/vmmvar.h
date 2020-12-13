@@ -13,6 +13,22 @@
 #define VMM_MAX_VM_MEM_SIZE	32768
 #define VMM_MAX_NICS_PER_VM	4
 
+#define VMM_PCI_MMIO_BAR_BASE	0xF0000000ULL
+#define VMM_PCI_MMIO_BAR_END	0xFFFFFFFFULL
+#define VMM_PCI_MMIO_BAR_SIZE	0x00010000
+#define VMM_PCI_IO_BAR_BASE	0x1000
+#define VMM_PCI_IO_BAR_END	0xFFFF
+#define VMM_PCI_IO_BAR_SIZE	0x1000
+
+enum {
+	VCPU_STATE_STOPPED,
+	VCPU_STATE_RUNNING,
+	VCPU_STATE_REQTERM,
+	VCPU_STATE_TERMINATED,
+	VCPU_STATE_UNKNOWN,
+};
+
+
 struct vcpu_reg_state {
 
 };
@@ -100,6 +116,17 @@ struct vm_info_result {
 #ifdef _KERNEL
 
 SLIST_HEAD(vcpu_head, vcpu);
+
+struct vcpu
+{
+	struct vm *vc_parent;
+	uint32_t vc_id;
+	uint16_t vc_vpid;
+	u_int vc_state;
+	SLIST_ENTRY(vcpu) vc_vcpu_link;
+
+	uint8_t vc_virt_mode;
+};
 
 #endif /* _KERNEL */
 
