@@ -9,7 +9,9 @@
 
 extern volatile int start_init_exec;
 
-extern void vm_create(struct vm_create_params *, struct proc *);
+extern int vm_create(struct vm_create_params *, struct proc *);
+
+extern struct	proc proc0;
 
 void
 start_vmm_init(void *arg)
@@ -22,7 +24,18 @@ start_vmm_init(void *arg)
 
 	// How does init load the first file? Can we do that? (load a kvm test blob)
 
-	vm_create(NULL, NULL);
+	struct vm_create_params params = {
+		.vcp_ncpus = 1,
+	};
+
+	// /* Output parameter from VMM_IOC_CREATE */
+	// uint32_t	vcp_id;
+
+	printf("STARTING VMM TEST\n");
+
+	//TODO: Configure some memory ranges
+
+	int create_result = vm_create(&params, &proc0);
 	
-	panic("Lets do some stuff here - then we never leave the kernel binary\n");
+	panic("vm_create result %d\n", create_result);
 }

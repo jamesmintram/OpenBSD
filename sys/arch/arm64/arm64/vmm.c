@@ -28,11 +28,14 @@
 #include <sys/pledge.h>
 #include <sys/memrange.h>
 
+#include <sys/device.h>
+
 #include <uvm/uvm_extern.h>
 
 #include <machine/cpu.h>
 #include <machine/hypervisor.h>
 #include <machine/vmmvar.h>
+
 
 struct vm {
 	struct vmspace		 *vm_vmspace;
@@ -79,6 +82,8 @@ struct vmm_softc {
 
 int vmm_probe(struct device *, void *, void *);
 void vmm_attach(struct device *, struct device *, void *);
+
+int arm_hyp_init();
 
 void hypmap_init(pmap_t map);
 void hypmap_map(pmap_t map, vaddr_t va, size_t len, vm_prot_t prot);
@@ -144,14 +149,53 @@ vmm_enabled(void)
 	return 1;
 }
 
-static int already_ran = 0;
-
 int
 vmm_probe(struct device *parent, void *match, void *aux)
 {
-	//FIXME(JAMES): This is temp until we place VMM init code in a proper code path
-	if (already_ran) return 0;
-	already_ran = 1;
+	char** busname = (char**)aux;
+
+	if (strncmp(*busname, vmm_cd.cd_name, sizeof(vmm_cd.cd_name) -1) != 0)
+		return (0);
+
+	return (1);
+}
+
+/*
+ * vmm_attach
+ *
+ * Calculates how many of each type of CPU we have, prints this into dmesg
+ * during attach. Initializes various locks, pools, and list structures for the
+ * VMM.
+ */
+void
+vmm_attach(struct device *parent, struct device *self, void *aux)
+{
+	struct vmm_softc *sc = (struct vmm_softc *)self;
+	// struct cpu_info *ci;
+	// CPU_INFO_ITERATOR cii;
+
+	sc->nr_vmx_cpus = 0;
+	sc->nr_svm_cpus = 0;
+	sc->nr_rvi_cpus = 0;
+	sc->nr_ept_cpus = 0;
+	sc->vm_ct = 0;
+	sc->vm_idx = 0;
+
+	arm_hyp_init();
+
+	pool_init(&vm_pool, sizeof(struct vm), 0, IPL_NONE, PR_WAITOK,
+	    "vmpool", NULL);
+	pool_init(&vcpu_pool, sizeof(struct vcpu), 64, IPL_NONE, PR_WAITOK,
+	    "vcpupl", NULL);
+
+	vmm_softc = sc;
+}
+
+int
+arm_hyp_init()
+{
+	static int already_ran = 0;
+	KASSERT(already_ran++ == 0);
 
 	// const char **busname = (const char **)aux;
 	
@@ -275,43 +319,8 @@ vmm_probe(struct device *parent, void *match, void *aux)
 
 	intr_restore(daif);
 
-    //TODO: Fix this mofo
-	// if (strcmp(*busname, vmm_cd.cd_name) != 0)
-	// 	return (0);
+	return (0);
 
-	// TODO: Doesn't live here either
-	pool_init(&vm_pool, sizeof(struct vm), 0, IPL_NONE, PR_WAITOK,
-	    "vmpool", NULL);
-	pool_init(&vcpu_pool, sizeof(struct vcpu), 64, IPL_NONE, PR_WAITOK,
-	    "vcpupl", NULL);
-
-	return (1);
-}
-
-/*
- * vmm_attach
- *
- * Calculates how many of each type of CPU we have, prints this into dmesg
- * during attach. Initializes various locks, pools, and list structures for the
- * VMM.
- */
-void
-vmm_attach(struct device *parent, struct device *self, void *aux)
-{
-	struct vmm_softc *sc = (struct vmm_softc *)self;
-	// struct cpu_info *ci;
-	// CPU_INFO_ITERATOR cii;
-
-	panic("vmm_attach: AT THE DISCO");
-
-	sc->nr_vmx_cpus = 0;
-	sc->nr_svm_cpus = 0;
-	sc->nr_rvi_cpus = 0;
-	sc->nr_ept_cpus = 0;
-	sc->vm_ct = 0;
-	sc->vm_idx = 0;
-
-	vmm_softc = sc;
 }
 
 void
@@ -452,6 +461,8 @@ vcpu_init_arm(struct vcpu *vcpu)
 
 	ret = 0;
 
+	printf("vcpu_init_arm\n");
+
 	return (ret);
 }
 
@@ -487,6 +498,7 @@ vcpu_init(struct vcpu *vcpu)
 int
 vm_impl_init_arm(struct vm *vm, struct proc *p)
 {
+		printf("vm_impl_init_arm\n");
 	return (0);
 }
 
@@ -501,6 +513,8 @@ vm_impl_init(struct vm *vm, struct proc *p)
 int
 vm_create(struct vm_create_params *vcp, struct proc *p)
 {
+	printf("vm_create\n");
+
 	int i, ret;
 	size_t memsize;
 	struct vm *vm;
@@ -511,8 +525,9 @@ vm_create(struct vm_create_params *vcp, struct proc *p)
 	// 	return (EINVAL);
 
 	memsize = vm_create_check_mem_ranges(vcp);
-	if (memsize == 0)
-		return (EINVAL);
+	// TOOD: Need to configure some memory regions for the VM to boot in
+	// if (memsize == 0)
+	// 	return (EINVAL);
 
 	/* XXX - support UP only (for now) */
 	if (vcp->vcp_ncpus != 1)
