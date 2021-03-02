@@ -123,7 +123,9 @@ boot(dev_t bootdev)
 		st = 0;
 		bootprompt = 1;	/* allow reselect should we fail */
 
-		printf("booting %s: ", cmd.path);
+		strncpy(cmd.path, "sd3a:/bsd", sizeof cmd.path);
+		printf("booting harcoded %s: ", cmd.path);
+
 		marks[MARK_START] = (u_long)cmd.addr;
 		if ((fd = loadfile(cmd.path, marks, LOAD_ALL)) != -1) {
 
