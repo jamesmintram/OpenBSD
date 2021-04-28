@@ -1,0 +1,12 @@
+CVS/
+obj/ 
+sys/arch/arm64/compile/GENERIC.MP/obj
+sys/arch/arm64/stand/efiboot/machine
+*.o
+*.o.tmp
+*.d
+*.img
+*.core
+*.EFI
+*.elf
+tools/

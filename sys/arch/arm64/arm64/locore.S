@@ -37,6 +37,11 @@
 #define	VIRT_BITS	39
 #define	NUM_L1_TTBR0	2
 
+	.align 3
+	.globl _C_LABEL(hypmode_enabled)
+_C_LABEL(hypmode_enabled):
+	.zero 8	
+
 /*
  * If we are started in EL2, configure the required hypervisor
  * registers and drop to EL1.
@@ -83,9 +88,17 @@ drop_to_el1:
 	msr	cntvoff_el2, xzr
 
 	/* Hypervisor trap functions */
-	adr	x2, hyp_vectors
-	sub	x2, x2, x29 // VA -> PA
+	adr	x2, hyp_stub_vectors
 	msr	vbar_el2, x2
+
+	/* Use the host VTTBR_EL2 to tell the host and the guests apart */
+	mov	x2, 0  /* #VTTBR_HOST */
+	msr	vttbr_el2, x2
+
+	/* Mark hypervisor mode as enabled */
+	mov 	x1, #1
+	adr	x2, hypmode_enabled
+	str 	x1, [x2]
 
 	mov	x2, #(PSR_F | PSR_I | PSR_A | PSR_D | PSR_M_EL1h)
 	msr	spsr_el2, x2
@@ -116,31 +129,48 @@ drop_to_el1:
 .Lsctlr_res1:
 	.quad SCTLR_RES1
 
-#define	VECT_EMPTY	\
-	.align 7;	\
-	1:	b	1b
+/*
+ * Install a new exception vector table with the base address supplied by the
+ * parameter in register x0.
+ */
+ENTRY(handle_stub_el1h_sync)
+	msr 	vbar_el2, x0
+	eret
+END(handle_hyp_stub)
+
+
+.macro VECT_EMPTY
+	.align 7
+	1: b 	1b
+.endm
+
+.macro VECT name
+	.align 7
+	b 	handle_\name
+.endm
 
 	.align 11
-hyp_vectors:
-	VECT_EMPTY	/* Synchronous EL2t */
-	VECT_EMPTY	/* IRQ EL2t */
-	VECT_EMPTY	/* FIQ EL2t */
-	VECT_EMPTY	/* Error EL2t */
+	.globl hyp_stub_vectors
+hyp_stub_vectors:
+	VECT_EMPTY			/* Synchronous EL2t */
+	VECT_EMPTY			/* IRQ EL2t */
+	VECT_EMPTY			/* FIQ EL2t */
+	VECT_EMPTY			/* SError EL2t */
 
-	VECT_EMPTY	/* Synchronous EL2h */
-	VECT_EMPTY	/* IRQ EL2h */
-	VECT_EMPTY	/* FIQ EL2h */
-	VECT_EMPTY	/* Error EL2h */
+	VECT_EMPTY			/* Synchronous EL2h */
+	VECT_EMPTY			/* IRQ EL2h */
+	VECT_EMPTY			/* FIQ EL2h */
+	VECT_EMPTY			/* SError EL2h */
 
-	VECT_EMPTY	/* Synchronous 64-bit EL1 */
-	VECT_EMPTY	/* IRQ 64-bit EL1 */
-	VECT_EMPTY	/* FIQ 64-bit EL1 */
-	VECT_EMPTY	/* Error 64-bit EL1 */
+	VECT stub_el1h_sync	/* Synchronous 64-bit EL1 */
+	VECT_EMPTY			/* IRQ 64-bit EL1 */
+	VECT_EMPTY			/* FIQ 64-bit EL1 */
+	VECT_EMPTY			/* SError 64-bit EL1 */
 
-	VECT_EMPTY	/* Synchronous 32-bit EL1 */
-	VECT_EMPTY	/* IRQ 32-bit EL1 */
-	VECT_EMPTY	/* FIQ 32-bit EL1 */
-	VECT_EMPTY	/* Error 32-bit EL1 */
+	VECT_EMPTY			/* Synchronous 32-bit EL1 */
+	VECT_EMPTY			/* IRQ 32-bit EL1 */
+	VECT_EMPTY			/* FIQ 32-bit EL1 */
+	VECT_EMPTY			/* SError 32-bit EL1 */
 
 /*
  * Get the delta between the physical address we were loaded to and the

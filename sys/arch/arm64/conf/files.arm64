@@ -23,6 +23,7 @@ file	arch/arm64/arm64/process_machdep.c
 file	arch/arm64/arm64/sig_machdep.c
 file	arch/arm64/arm64/syscall.c
 file	arch/arm64/arm64/sys_machdep.c
+file	arch/arm64/arm64/hyp.S
 
 file	arch/arm64/arm64/cpu.c
 file	arch/arm64/arm64/intr.c
@@ -155,3 +156,13 @@ device  apm
 attach  apm at mainbus
 file	arch/arm64/dev/apm.c			apm		needs-flag
 file	arch/arm64/arm64/acpiapm.c		apm
+
+#
+# VMM
+#
+device vmm {}
+attach vmm at mainbus
+file    arch/arm64/arm64/vmm.c          vmm     needs-flag
+
+# This is to allow quick iteration/testing during vmm standup
+file    arch/arm64/arm64/vmm_test.c

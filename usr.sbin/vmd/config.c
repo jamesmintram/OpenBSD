@@ -387,8 +387,8 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 			 */
 			oflags = O_RDONLY|O_NONBLOCK;
 			aflags = R_OK;
-			n = virtio_get_base(diskfds[i][j], base, sizeof(base),
-			    vmc->vmc_disktypes[i], path);
+			// n = virtio_get_base(diskfds[i][j], base, sizeof(base),
+			//     vmc->vmc_disktypes[i], path);
 			if (n == 0)
 				break;
 			if (n == -1) {
