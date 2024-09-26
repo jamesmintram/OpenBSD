@@ -43,6 +43,7 @@ void pmap_free_asid(pmap_t pm);
 static inline void
 ttlb_flush(pmap_t pm, vaddr_t va)
 {
+	//FIXME(JAMES): How about stage 2 pmap?
 	vaddr_t resva;
 
 	resva = ((va >> PAGE_SHIFT) & ((1ULL << 44) - 1));

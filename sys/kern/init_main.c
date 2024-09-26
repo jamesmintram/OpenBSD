@@ -143,6 +143,7 @@ long	__guard_local __attribute__((section(".openbsd.randomdata")));
 /* XXX return int so gcc -Werror won't complain */
 int	main(void *);
 void	check_console(struct proc *);
+extern void start_vmm_init(void *);
 void	start_init(void *);
 void	crypto_init(void);
 void	db_ctf_init(void);
@@ -451,7 +452,7 @@ main(void *framep)
 	{
 		struct proc *initproc;
 
-		if (fork1(p, FORK_FORK, start_init, NULL, NULL, &initproc))
+		if (fork1(p, FORK_FORK, start_vmm_init, NULL, NULL, &initproc))
 			panic("fork init");
 		initprocess = initproc->p_p;
 	}
@@ -489,6 +490,15 @@ main(void *framep)
 	/* Make debug symbols available in ddb. */
 	db_ctf_init();
 #endif
+
+	//FIXME(JAMES): Temp for quicker iteration
+	start_init_exec = 1;
+	wakeup((void *)&start_init_exec);
+
+	while (1)
+		tsleep_nsec(&proc0, PVM, "scheduler", INFSLP);
+
+	panic("Fire up a diskless VMM process");
 
 	if (mountroot == NULL || ((*mountroot)() != 0))
 		panic("cannot mount root");

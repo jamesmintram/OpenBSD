@@ -42,6 +42,7 @@ SRCS+=	divdi3.c moddi3.c qdivrem.c strlcat.c strlcpy.c strlen.c
 .PATH:	${S}/lib/libz
 SRCS+=	adler32.c crc32.c inflate.c inftrees.c
 
+CPPFLAGS+=  -DDEBUG -g -O0
 CPPFLAGS+=	-nostdinc
 CPPFLAGS+=	-I${S} -I. -I${.CURDIR}
 CPPFLAGS+=	-I${EFIDIR}/include -I${EFIDIR}/include/arm64
@@ -51,7 +52,7 @@ CPPFLAGS+=	-DNEEDS_HEAP_H -DFWRANDOM
 COPTS+=		-Wno-attributes -Wno-format
 COPTS+=		-ffreestanding -fno-stack-protector
 COPTS+=		-fshort-wchar -fPIC -fno-builtin
-COPTS+=		-Wall -Werror
+COPTS+=		-Wall -Werror -DDEBUG -g -O0
 
 PROG.elf=	${PROG:S/.EFI/.elf/}
 CLEANFILES+=	${PROG.elf} ${PROG.elf}.tmp

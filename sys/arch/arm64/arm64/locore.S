@@ -37,6 +37,11 @@
 #define	VIRT_BITS	39
 #define	NUM_L1_TTBR0	2
 
+	.align 3
+	.globl _C_LABEL(hypmode_enabled)
+_C_LABEL(hypmode_enabled):
+	.zero 8	
+
 /*
  * If we are started in EL2, configure the required hypervisor
  * registers and drop to EL1.
@@ -52,8 +57,12 @@ drop_to_el1:
 	ret
 1:
 	/* Configure the Hypervisor */
-	mov	x2, #(HCR_RW)
+	ldr	x2, =(HCR_RW | HCR_APK | HCR_API | HCR_E2H)
 	msr	hcr_el2, x2
+
+	/* Stash value of HCR_EL2 for later */
+	isb
+	mrs	x4, hcr_el2
 
 	/* Load the Virtualization Process ID Register */
 	mrs	x2, midr_el1
@@ -67,41 +76,54 @@ drop_to_el1:
 	ldr	x2, .Lsctlr_res1
 	msr	sctlr_el1, x2
 
-	/* Don't trap to EL2 for exceptions */
-	mov	x2, #CPTR_RES1
+
+	/*
+	 * The kernel will be running in EL2, route exceptions here rather
+	 * than EL1.
+	 */
+	orr	x4, x4, #(HCR_TGE)
+	msr	hcr_el2, x4
+	isb
+
+	/* SCTLR_EL12_REG - register name creation macros? */
+	/* https://gist.github.com/justtryingthingsout/2f22b9a5151c06c367bdd9b52b08b719#file-everest-core-sysregs-L915 */
+	msr	S3_5_c1_c0_0, x2
+	mov	x2, xzr /* CPTR_EL2 is managed by vfp.c */
+	/*ldr	x3, =(CNTHCTL_E2H_EL1PCTEN | CNTHCTL_E2H_EL1PTEN)
+	ldr	x5, =(PSR_DAIF | PSR_M_EL2h)
+	*/
+	
+	/* no vhe stuff here */
+
+	/* continue vhe/non vhe paths */
+
 	msr	cptr_el2, x2
+	/* Enable access to the physical timers at EL1 */
+	msr	cnthctl_el2, x3
+	/* Set the return PSTATE */
+	msr	spsr_el2, x5
 
 	/* Don't trap to EL2 for CP15 traps */
 	msr	hstr_el2, xzr
 
-	/* Enable access to the physical timers at EL1 */
-	mrs	x2, cnthctl_el2
-	orr	x2, x2, #(CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN)
-	msr	cnthctl_el2, x2
-
 	/* Set the counter offset to a known value */
 	msr	cntvoff_el2, xzr
 
-	/* Hypervisor trap functions */
-	adr	x2, hyp_vectors
-	sub	x2, x2, x29 // VA -> PA
-	msr	vbar_el2, x2
-
-	mov	x2, #(PSR_F | PSR_I | PSR_A | PSR_D | PSR_M_EL1h)
-	msr	spsr_el2, x2
+	/* Zero vttbr_el2 so a hypervisor can tell the host and guest apart */
+	msr	vttbr_el2, xzr
 
 	/* Configure GICv3 CPU interface */
 	mrs	x2, id_aa64pfr0_el1
 	/* Extract GIC bits from the register */
 	ubfx	x2, x2, #ID_AA64PFR0_GIC_SHIFT, #ID_AA64PFR0_GIC_BITS
-	/* GIC[3:0] == 0001 - GIC CPU interface via special regs. supported */
-	cmp	x2, #(ID_AA64PFR0_GIC_CPUIF_EN >> ID_AA64PFR0_GIC_SHIFT)
-	b.ne	2f
+	/* GIC[3:0] != 0000 - GIC CPU interface via special regs. supported */
+	cbz	x2, 2f
 
 	mrs	x2, icc_sre_el2
 	orr	x2, x2, #ICC_SRE_EL2_EN	/* Enable access from insecure EL1 */
 	orr	x2, x2, #ICC_SRE_EL2_SRE	/* Enable system registers */
 	msr	icc_sre_el2, x2
+
 2:
 
 	/* Set the address to return to our return address */
@@ -116,31 +138,48 @@ drop_to_el1:
 .Lsctlr_res1:
 	.quad SCTLR_RES1
 
-#define	VECT_EMPTY	\
-	.align 7;	\
-	1:	b	1b
+/*
+ * Install a new exception vector table with the base address supplied by the
+ * parameter in register x0.
+ */
+ENTRY(handle_stub_el1h_sync)
+	msr 	vbar_el2, x0
+	eret
+END(handle_hyp_stub)
+
+
+.macro VECT_EMPTY
+	.align 7
+	1: b 	1b
+.endm
+
+.macro VECT name
+	.align 7
+	b 	handle_\name
+.endm
 
 	.align 11
-hyp_vectors:
-	VECT_EMPTY	/* Synchronous EL2t */
-	VECT_EMPTY	/* IRQ EL2t */
-	VECT_EMPTY	/* FIQ EL2t */
-	VECT_EMPTY	/* Error EL2t */
+	.globl hyp_stub_vectors
+hyp_stub_vectors:
+	VECT_EMPTY			/* Synchronous EL2t */
+	VECT_EMPTY			/* IRQ EL2t */
+	VECT_EMPTY			/* FIQ EL2t */
+	VECT_EMPTY			/* SError EL2t */
 
-	VECT_EMPTY	/* Synchronous EL2h */
-	VECT_EMPTY	/* IRQ EL2h */
-	VECT_EMPTY	/* FIQ EL2h */
-	VECT_EMPTY	/* Error EL2h */
+	VECT_EMPTY			/* Synchronous EL2h */
+	VECT_EMPTY			/* IRQ EL2h */
+	VECT_EMPTY			/* FIQ EL2h */
+	VECT_EMPTY			/* SError EL2h */
 
-	VECT_EMPTY	/* Synchronous 64-bit EL1 */
-	VECT_EMPTY	/* IRQ 64-bit EL1 */
-	VECT_EMPTY	/* FIQ 64-bit EL1 */
-	VECT_EMPTY	/* Error 64-bit EL1 */
+	VECT stub_el1h_sync	/* Synchronous 64-bit EL1 */
+	VECT_EMPTY			/* IRQ 64-bit EL1 */
+	VECT_EMPTY			/* FIQ 64-bit EL1 */
+	VECT_EMPTY			/* SError 64-bit EL1 */
 
-	VECT_EMPTY	/* Synchronous 32-bit EL1 */
-	VECT_EMPTY	/* IRQ 32-bit EL1 */
-	VECT_EMPTY	/* FIQ 32-bit EL1 */
-	VECT_EMPTY	/* Error 32-bit EL1 */
+	VECT_EMPTY			/* Synchronous 32-bit EL1 */
+	VECT_EMPTY			/* IRQ 32-bit EL1 */
+	VECT_EMPTY			/* FIQ 32-bit EL1 */
+	VECT_EMPTY			/* SError 32-bit EL1 */
 
 /*
  * Get the delta between the physical address we were loaded to and the

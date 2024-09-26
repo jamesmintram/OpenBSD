@@ -41,7 +41,10 @@ int mainbus_match_secondary(struct device *, void *, void *);
 void mainbus_attach_psci(struct device *);
 void mainbus_attach_efi(struct device *);
 void mainbus_attach_apm(struct device *);
+void mainbus_attach_vmm(struct device *);
 void mainbus_attach_framebuffer(struct device *);
+
+extern int vmm_enabled(void);
 
 struct mainbus_softc {
 	struct device		 sc_dev;
@@ -146,6 +149,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	mainbus_attach_apm(self);
+	mainbus_attach_vmm(self);
 
 	/* Scan the whole tree. */
 	sc->sc_early = 1;
@@ -373,6 +377,18 @@ mainbus_attach_psci(struct device *self)
 	sc->sc_early = 1;
 	mainbus_attach_node(self, node, NULL);
 	sc->sc_early = 0;
+}
+
+void 
+mainbus_attach_vmm(struct device *self) {
+	struct fdt_attach_args fa;
+
+	if (vmm_enabled()) {
+		memset(&fa, 0, sizeof(fa));
+		fa.fa_name = "vmm";
+
+		config_found(self, &fa, NULL);
+	}
 }
 
 void

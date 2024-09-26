@@ -573,6 +573,7 @@
 
 #define	TCR_T1SZ_SHIFT	16
 #define	TCR_T0SZ_SHIFT	0
+#define	TCR_T0SZ_MASK		0x3f
 #define	TCR_T1SZ(x)	((x) << TCR_T1SZ_SHIFT)
 #define	TCR_T0SZ(x)	((x) << TCR_T0SZ_SHIFT)
 #define	TCR_TxSZ(x)	(TCR_T1SZ(x) | TCR_T0SZ(x))

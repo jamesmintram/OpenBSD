@@ -94,6 +94,8 @@ efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *systab)
 	if (status == EFI_SUCCESS)
 		efi_bootdp = dp;
 
+	printf("Path: %s\n", imgp->FilePath);
+
 	progname = "BOOTAA64";
 
 	boot(0);
@@ -261,9 +263,12 @@ efi_diskprobe(void)
 
 		media = blkio->Media;
 		if (media->LogicalPartition || !media->MediaPresent)
+		{
 			continue;
+		}
 		di = alloc(sizeof(struct diskinfo));
 		efid_init(di, blkio);
+
 
 		if (efi_bootdp == NULL || depth == -1 || bootdev != 0)
 			goto next;
@@ -852,6 +857,8 @@ devopen(struct open_file *f, const char *fname, char **file)
 {
 	struct devsw *dp;
 	int dev, unit, part, error;
+
+	printf("OPENING THE DEV %s\n", fname);
 
 	error = devparse(fname, &dev, &unit, &part, (const char **)file);
 	if (error)
