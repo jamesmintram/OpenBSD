@@ -183,12 +183,12 @@ consinit(void)
 
 	consinit_called = 1;
 
-	amluart_init_cons();
-	com_fdt_init_cons();
-	imxuart_init_cons();
-	mvuart_init_cons();
+	// amluart_init_cons();
+	// com_fdt_init_cons();
+	// imxuart_init_cons();
+	// mvuart_init_cons();
 	pluart_init_cons();
-	simplefb_init_cons(&arm64_bs_tag);
+	//simplefb_init_cons(&arm64_bs_tag);
 }
 
 void
@@ -220,6 +220,18 @@ cpu_startup()
 	paddr_t maxaddr;
 
 	proc0.p_addr = proc0paddr;
+
+	uint64_t el;
+
+	/* Accessible from all security levels */
+	el = READ_SPECIALREG(CurrentEL) >> 2;
+	printf("cpu_startup in El%llu\n", el);
+
+	// extern void drop_to_el1();
+	// drop_to_el1();
+
+	// el = READ_SPECIALREG(CurrentEL) >> 2;
+	// printf("Dropped too El%llu\n", el);
 
 	/*
 	 * Give pmap a chance to set up a few more things now the vm

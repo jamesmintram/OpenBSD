@@ -1,4 +1,5 @@
 /*	$OpenBSD: vmm.c,v 1.274 2020/09/10 17:03:03 mpi Exp $	*/
+
 /*
  * Copyright (c) 2014 Mike Larkin <mlarkin@openbsd.org>
  *
@@ -197,6 +198,8 @@ arm_hyp_init()
 	static int already_ran = 0;
 	KASSERT(already_ran++ == 0);
 
+	printf("Initializing the hypervisor\n");
+
 	// const char **busname = (const char **)aux;
 	
 	// uint64_t ich_vtr_el2;
@@ -205,7 +208,7 @@ arm_hyp_init()
 	uint64_t id_aa64mmfr0_el1;
 	uint64_t pa_range_bits;
 	uint32_t sctlr_el2;
-	// uint32_t vtcr_el2;
+	uint32_t vtcr_el2;
 
 	size_t hyp_code_len;
 
@@ -229,6 +232,8 @@ arm_hyp_init()
 	 *
 	 * x0: the exception vector table responsible for hypervisor
 	 * initialization on the next call.
+	 * 
+	 * Handled by handle_stub_el1h_sync
 	 */
 	pa = vtophys(hyp_init_vectors);
 	vmm_call_hyp((void *)pa);
@@ -281,6 +286,7 @@ arm_hyp_init()
 	sctlr_el2 |= SCTLR_EL2_WXN;
 	sctlr_el2 &= ~SCTLR_EL2_EE;
 
+	// TODO
 	// /*
 	//  * Configure the Stage 2 translation control register:
 	//  *
@@ -293,19 +299,20 @@ arm_hyp_init()
 	//  * VTCR_EL2_SH0_IS: Memory associated with Stage 2 walks is inner
 	//  * shareable
 	//  */
-	// vtcr_el2 = VTCR_EL2_RES1;
-	// vtcr_el2 = (pa_range_bits & 0x7) << VTCR_EL2_PS_SHIFT;
-	// vtcr_el2 |= VTCR_EL2_IRGN0_WBWA | VTCR_EL2_ORGN0_WBWA;
-	// vtcr_el2 |= VTCR_EL2_TG0_4K;
-	// vtcr_el2 |= VTCR_EL2_SH0_IS;
-	// if (pa_range_bits == ID_AA64MMFR0_PARange_1T) {
-	// 	/*
-	// 	 * 40 bits of physical addresses, use concatenated level 1
-	// 	 * tables
-	// 	 */
-	// 	vtcr_el2 |= 24 & VTCR_EL2_T0SZ_MASK;
-	// 	vtcr_el2 |= VTCR_EL2_SL0_4K_LVL1;
-	// }
+	vtcr_el2 = VTCR_EL2_RES1;
+	vtcr_el2 = (pa_range_bits & 0x7) << VTCR_EL2_PS_SHIFT;
+	vtcr_el2 |= VTCR_EL2_IRGN0_WBWA | VTCR_EL2_ORGN0_WBWA;
+	vtcr_el2 |= VTCR_EL2_TG0_4K;
+	vtcr_el2 |= VTCR_EL2_SH0_IS;
+	if (pa_range_bits == ID_AA64MMFR0_PA_RANGE_1T) {
+		panic("concatenated level 1 tables not supported");
+		// /*
+		//  * 40 bits of physical addresses, use concatenated level 1
+		//  * tables
+		//  */
+		// vtcr_el2 |= 24 & VTCR_EL2_T0SZ_MASK;
+		// vtcr_el2 |= VTCR_EL2_SL0_4K_LVL1;
+	}
 
 	// /* Special call to initialize EL2 */
 	vmm_call_hyp(
@@ -314,10 +321,26 @@ arm_hyp_init()
 	    vtophys(hyp_pmap->pm_vp.l1), // FIXME Should be -> ktohyp(stack_top), 
 		tcr_el2, 
 		sctlr_el2, 
-		sctlr_el2 // FIXME -> vtcr_el2
+		vtcr_el2
 		);
 
 	intr_restore(daif);
+
+	printf("Hypervisor initialized\n");
+	
+	//printf("Calling guest \n");
+	//vmm_call_hyp(
+		//(void *)vtophys(arm64_enter_guest), 
+		// TODO: I guess we need to pass in something here?
+
+		// hyp_vectors - needs to call the func passed in? (Does it need to do anything else?)
+		// vmm/hyp.S -> handle_el2_el1_sync64 -> call_function -> vmm_enter_guest
+		//
+		// - can we copy some memory into the guest memory + execute it? OR can we just map some pages containing code?
+		// - how do we get something back to the host? (To print!)
+		// - 
+		//
+	//);
 
 	return (0);
 
@@ -401,27 +424,30 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 		 * Calling uvm_share() when creating the VM will take care of
 		 * further checks.
 		 */
-		if (vmr->vmr_va < VM_MIN_ADDRESS ||
-		    vmr->vmr_va >= VM_MAXUSER_ADDRESS ||
-		    vmr->vmr_size >= VM_MAXUSER_ADDRESS - vmr->vmr_va)
-			return (0);
+		//FIXME(JAMES): Reinstate when we are back in user space
+		// if (vmr->vmr_va < VM_MIN_ADDRESS ||
+		//     vmr->vmr_va >= VM_MAXUSER_ADDRESS ||
+		//     vmr->vmr_size >= VM_MAXUSER_ADDRESS - vmr->vmr_va)
+		// 	return (0);
 
 		/*
 		 * Specifying ranges within the PCI MMIO space is forbidden.
 		 * Disallow ranges that start inside the MMIO space:
 		 * [VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
 		 */
-		if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END)
-			return (0);
+		// TODO(JAMES): Is this valid for ARM?
+		// if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE &&
+		//     vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END)
+		// 	return (0);
 
 		/*
 		 * ... and disallow ranges that end inside the MMIO space:
 		 * (VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
 		 */
-		if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END)
-			return (0);
+		// TODO(JAMES): Is this valid for ARM?
+		// if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE &&
+		//     vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END)
+		// 	return (0);
 
 		/*
 		 * Make sure that guest physcal memory ranges do not overlap
@@ -525,9 +551,9 @@ vm_create(struct vm_create_params *vcp, struct proc *p)
 	// 	return (EINVAL);
 
 	memsize = vm_create_check_mem_ranges(vcp);
-	// TOOD: Need to configure some memory regions for the VM to boot in
-	// if (memsize == 0)
-	// 	return (EINVAL);
+	
+	if (memsize == 0)
+		return (EINVAL);
 
 	/* XXX - support UP only (for now) */
 	if (vcp->vcp_ncpus != 1)
@@ -620,5 +646,145 @@ vm_teardown(struct vm *vm)
 	// }
 
 	rw_exit_write(&vm->vm_vcpu_lock);
-	 pool_put(&vm_pool, vm);
+	pool_put(&vm_pool, vm);
+}
+
+/*
+ * vm_run
+ *
+ * Run the vm / vcpu specified by 'vrp'
+ *
+ * Parameters:
+ *  vrp: structure defining the VM to run
+ *
+ * Return value:
+ *  ENOENT: the VM defined in 'vrp' could not be located
+ *  EBUSY: the VM defined in 'vrp' is already running
+ *  EFAULT: error copying data from userspace (vmd) on return from previous
+ *      exit.
+ *  EAGAIN: help is needed from vmd(8) (device I/O or exit vmm(4) cannot
+ *      handle in-kernel.)
+ *  0: the run loop exited and no help is needed from vmd(8)
+ */
+int
+vm_run(struct vm_run_params *vrp)
+{
+	printf("vm_run\n");
+
+	// SHOULD CRASH COZ VECTOR TABLE DOES NOTHING
+	vmm_call_hyp(NULL);
+
+	// Chain
+	// El1 Host -> El2 Hyp -> EL1 Guest
+
+	// Need some code that is available to the "guest"
+	// - Guest is same memory as host (initially)
+	// - Code should call a C function in the kernel which println + eret
+	// - 
+
+
+	// struct vm *vm;
+	// struct vcpu *vcpu;
+	// int ret = 0, error;
+	// u_int old, next;
+
+	// /*
+	//  * Find desired VM
+	//  */
+	// rw_enter_read(&vmm_softc->vm_lock);
+	// error = vm_find(vrp->vrp_vm_id, &vm);
+
+	// /*
+	//  * Attempt to locate the requested VCPU. If found, attempt to
+	//  * to transition from VCPU_STATE_STOPPED -> VCPU_STATE_RUNNING.
+	//  * Failure to make the transition indicates the VCPU is busy.
+	//  */
+	// if (error == 0) {
+	// 	rw_enter_read(&vm->vm_vcpu_lock);
+	// 	SLIST_FOREACH(vcpu, &vm->vm_vcpu_list, vc_vcpu_link) {
+	// 		if (vcpu->vc_id == vrp->vrp_vcpu_id)
+	// 			break;
+	// 	}
+
+	// 	if (vcpu != NULL) {
+	// 		old = VCPU_STATE_STOPPED;
+	// 		next = VCPU_STATE_RUNNING;
+
+	// 		if (atomic_cas_uint(&vcpu->vc_state, old, next) != old)
+	// 			ret = EBUSY;
+	// 		else
+	// 			atomic_inc_int(&vm->vm_vcpus_running);
+	// 	}
+	// 	rw_exit_read(&vm->vm_vcpu_lock);
+
+	// 	if (vcpu == NULL)
+	// 		ret = ENOENT;
+	// }
+	// rw_exit_read(&vmm_softc->vm_lock);
+
+	// if (error != 0)
+	// 	ret = error;
+
+	// /* Bail if errors detected in the previous steps */
+	// if (ret)
+	// 	return (ret);
+
+	// /*
+	//  * We may be returning from userland helping us from the last exit.
+	//  * If so (vrp_continue == 1), copy in the exit data from vmd. The
+	//  * exit data will be consumed before the next entry (this typically
+	//  * comprises VCPU register changes as the result of vmd(8)'s actions).
+	//  */
+	// if (vrp->vrp_continue) {
+	// 	if (copyin(vrp->vrp_exit, &vcpu->vc_exit,
+	// 	    sizeof(struct vm_exit)) == EFAULT) {
+	// 		return (EFAULT);
+	// 	}
+	// }
+
+	// /* Run the VCPU specified in vrp */
+	// if (vcpu->vc_virt_mode == VMM_MODE_VMX ||
+	//     vcpu->vc_virt_mode == VMM_MODE_EPT) {
+	// 	ret = vcpu_run_vmx(vcpu, vrp);
+	// } else if (vcpu->vc_virt_mode == VMM_MODE_SVM ||
+	// 	   vcpu->vc_virt_mode == VMM_MODE_RVI) {
+	// 	ret = vcpu_run_svm(vcpu, vrp);
+	// }
+
+	// /*
+	//  * We can set the VCPU states here without CAS because once
+	//  * a VCPU is in state RUNNING or REQTERM, only the VCPU itself
+	//  * can switch the state.
+	//  */
+	// atomic_dec_int(&vm->vm_vcpus_running);
+	// if (vcpu->vc_state == VCPU_STATE_REQTERM) {
+	// 	vrp->vrp_exit_reason = VM_EXIT_TERMINATED;
+	// 	vcpu->vc_state = VCPU_STATE_TERMINATED;
+	// 	if (vm->vm_vcpus_running == 0) {
+	// 		rw_enter_write(&vmm_softc->vm_lock);
+	// 		vm_teardown(vm);
+	// 		rw_exit_write(&vmm_softc->vm_lock);
+	// 	}
+	// 	ret = 0;
+	// } else if (ret == EAGAIN) {
+	// 	/* If we are exiting, populate exit data so vmd can help. */
+	// 	vrp->vrp_exit_reason = vcpu->vc_gueststate.vg_exit_reason;
+	// 	vrp->vrp_irqready = vcpu->vc_irqready;
+	// 	vcpu->vc_state = VCPU_STATE_STOPPED;
+
+	// 	if (copyout(&vcpu->vc_exit, vrp->vrp_exit,
+	// 	    sizeof(struct vm_exit)) == EFAULT) {
+	// 		ret = EFAULT;
+	// 	} else
+	// 		ret = 0;
+	// } else if (ret == 0) {
+	// 	vrp->vrp_exit_reason = VM_EXIT_NONE;
+	// 	vcpu->vc_state = VCPU_STATE_STOPPED;
+	// } else {
+	// 	vrp->vrp_exit_reason = VM_EXIT_TERMINATED;
+	// 	vcpu->vc_state = VCPU_STATE_TERMINATED;
+	// }
+
+	// return (ret);
+	return 0;
 }

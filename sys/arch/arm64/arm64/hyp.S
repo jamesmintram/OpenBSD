@@ -9,10 +9,15 @@
 	.align 12
 hyp_code_start:
 
-ENTRY(vmm_call_hyp)
+/* ENTRY(vmm_call_hyp) */
+	.globl	vmm_call_hyp
+vmm_call_hyp:
+	/* RETGUARD SETUP? */
 	hvc	#0
+	/* RETGUARD END? */
 	ret
-END(vmm_call_hyp)
+
+/* END(vmm_call_hyp) */
 
 .macro VECT_EMPTY
 	.align 7
@@ -69,7 +74,7 @@ ENTRY(handle_hyp_init)
     msr	sctlr_el2, x6
 
 	/* Install the new exception vectors */
-	# msr	vbar_el2, x0
+	msr	vbar_el2, x0
 	/* Set the stack top address */
 	# mov	sp, x2
 	/* Use the host VTTBR_EL2 to tell the host and the guests apart */
