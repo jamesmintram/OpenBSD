@@ -94,6 +94,9 @@ run_loadfile(uint64_t *marks, int howto)
 	char *cp;
 	void *fdt;
 
+	uint64_t el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
+
 	strlcpy(args, cmd.path, sizeof(args));
 	cp = args + strlen(args);
 
@@ -113,13 +116,30 @@ run_loadfile(uint64_t *marks, int howto)
 		*++cp = 0;
 
 	fdt = efi_makebootargs(args, howto);
-
+	el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
 	efi_cleanup();
-
+el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
 	cpu_flush_dcache(marks[MARK_ENTRY], marks[MARK_END] - marks[MARK_ENTRY]);
+	el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
 	cpu_inval_icache();
-
+el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
 	cpu_flush_dcache((vaddr_t)fdt, fdt_get_size(fdt));
+el0 = READ_SPECIALREG(CurrentEL);
+	printf("CurrentEL %llu\n", el0);
+	printf("Leaving EFI...\n");
+
+	// int a = 1;
+	// int c = 1;
+	// volatile int *b = &c;
+
+	// // while (a == 1)
+	// // {
+	// // 	*b = 23;
+	// // }
 
 	(*(startfuncp)(marks[MARK_ENTRY]))((void *)marks[MARK_END], 0, fdt);
 
